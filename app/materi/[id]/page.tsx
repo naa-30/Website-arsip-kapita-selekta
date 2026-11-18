@@ -1,6 +1,6 @@
-import React, { Suspense } from 'react';
-import AksesMateriClient from './AksesMateriClient';
-import { INITIAL_MATERIALS } from '@/lib/mock-data';
+import React, { Suspense } from "react";
+import AksesMateriClient from "./AksesMateriClient";
+import { INITIAL_MATERIALS } from "@/lib/mock-data";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -12,10 +12,18 @@ export function generateStaticParams() {
   }));
 }
 
+export const instant = false;
+
 export default async function AksesMateriPage({ params }: PageProps) {
   const resolved = await params;
   return (
-    <Suspense fallback={<div className="p-16 text-center text-slate-400">Memuat materi pembelajaran...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-16 text-center text-slate-400">
+          Memuat materi pembelajaran...
+        </div>
+      }
+    >
       <AksesMateriClient materialId={resolved.id} />
     </Suspense>
   );

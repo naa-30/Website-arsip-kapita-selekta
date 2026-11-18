@@ -1,11 +1,16 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { MaterialService, AuthService } from '@/lib/storage';
-import { INITIAL_MATERIALS } from '@/lib/mock-data';
-import { Material, MaterialKind, MaterialStatus, UserProfile } from '@/lib/types';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { MaterialService, AuthService } from "@/lib/storage";
+import { INITIAL_MATERIALS } from "@/lib/mock-data";
+import {
+  Material,
+  MaterialKind,
+  MaterialStatus,
+  UserProfile,
+} from "@/lib/types";
 import {
   Upload,
   FileText,
@@ -24,14 +29,15 @@ import {
   Sparkles,
   ArrowRight,
   Eye,
-  Check
-} from 'lucide-react';
+  Check,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface SimulatedUploadItem {
   id: string;
   name: string;
   pages: number;
-  status: 'Mengunggah' | 'Selesai' | 'Gagal';
+  status: "Mengunggah" | "Selesai" | "Gagal";
   progress: number;
 }
 
@@ -44,21 +50,46 @@ export default function DashboardGuruPage() {
   const [mounted, setMounted] = useState(false);
 
   // Form states
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [subject, setSubject] = useState('Matematika');
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [subject, setSubject] = useState("Matematika");
   const [grade, setGrade] = useState<number>(4);
-  const [kind, setKind] = useState<MaterialKind>('pdf');
-  const [canvasUrl, setCanvasUrl] = useState('');
+  const [kind, setKind] = useState<MaterialKind>("pdf");
+  const [canvasUrl, setCanvasUrl] = useState("");
   const [allowDownload, setAllowDownload] = useState(true);
   const [pageCount, setPageCount] = useState<number>(14);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Upload simulation state
   const [uploadItems, setUploadItems] = useState<SimulatedUploadItem[]>([
-    { id: 'sim-1', name: 'Modul Ajar Pecahan.pdf', pages: 14, status: 'Mengunggah', progress: 60 },
-    { id: 'sim-2', name: 'Lembar Kerja Perkalian.pdf', pages: 8, status: 'Gagal', progress: 10 },
-    { id: 'sim-3', name: 'Ekosistem di Sekitar Kita.pdf', pages: 22, status: 'Selesai', progress: 100 },
-    { id: 'sim-4', name: 'Peta Konsep Siklus Air', pages: 1, status: 'Selesai', progress: 100 },
+    {
+      id: "sim-1",
+      name: "Modul Ajar Pecahan.pdf",
+      pages: 14,
+      status: "Mengunggah",
+      progress: 60,
+    },
+    {
+      id: "sim-2",
+      name: "Lembar Kerja Perkalian.pdf",
+      pages: 8,
+      status: "Gagal",
+      progress: 10,
+    },
+    {
+      id: "sim-3",
+      name: "Ekosistem di Sekitar Kita.pdf",
+      pages: 22,
+      status: "Selesai",
+      progress: 100,
+    },
+    {
+      id: "sim-4",
+      name: "Peta Konsep Siklus Air",
+      pages: 1,
+      status: "Selesai",
+      progress: 100,
+    },
   ]);
 
   const [isPublishing, setIsPublishing] = useState(false);
@@ -71,7 +102,7 @@ export default function DashboardGuruPage() {
     const user = AuthService.getCurrentUser();
     // If not logged in, auto-login as demo guru for smooth demo testing
     if (!user) {
-      const demoGuru = AuthService.login('guru4', 'guru');
+      const demoGuru = AuthService.login("guru4", "guru");
       setCurrentUser(demoGuru);
     } else {
       setCurrentUser(user);
@@ -86,11 +117,11 @@ export default function DashboardGuruPage() {
     loadData();
 
     const handleUpdate = () => loadData();
-    window.addEventListener('arsip_storage_update', handleUpdate);
-    window.addEventListener('arsip_auth_change', handleUpdate);
+    window.addEventListener("arsip_storage_update", handleUpdate);
+    window.addEventListener("arsip_auth_change", handleUpdate);
     return () => {
-      window.removeEventListener('arsip_storage_update', handleUpdate);
-      window.removeEventListener('arsip_auth_change', handleUpdate);
+      window.removeEventListener("arsip_storage_update", handleUpdate);
+      window.removeEventListener("arsip_auth_change", handleUpdate);
     };
   }, []);
 
@@ -117,13 +148,15 @@ export default function DashboardGuruPage() {
   const handleFiles = (fileList: FileList) => {
     const file = fileList[0];
     const fileName = file.name;
-    const isPpt = fileName.endsWith('.ppt') || fileName.endsWith('.pptx');
-    const detectedKind: MaterialKind = isPpt ? 'ppt' : 'pdf';
+    setSelectedFile(file);
+
+    const isPpt = fileName.endsWith(".ppt") || fileName.endsWith(".pptx");
+    const detectedKind: MaterialKind = isPpt ? "ppt" : "pdf";
     const estimatedPages = Math.floor(Math.random() * 12) + 6;
 
     // Prefill form if empty
     if (!title) {
-      const cleanName = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+      const cleanName = fileName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
       setTitle(cleanName);
     }
     setKind(detectedKind);
@@ -133,7 +166,7 @@ export default function DashboardGuruPage() {
       id: `up-${Date.now()}`,
       name: fileName,
       pages: estimatedPages,
-      status: 'Mengunggah',
+      status: "Mengunggah",
       progress: 25,
     };
 
@@ -142,13 +175,19 @@ export default function DashboardGuruPage() {
     // Animate upload progress
     setTimeout(() => {
       setUploadItems((prev) =>
-        prev.map((item) => (item.id === newItem.id ? { ...item, progress: 75 } : item))
+        prev.map((item) =>
+          item.id === newItem.id ? { ...item, progress: 75 } : item,
+        ),
       );
     }, 400);
 
     setTimeout(() => {
       setUploadItems((prev) =>
-        prev.map((item) => (item.id === newItem.id ? { ...item, progress: 100, status: 'Selesai' } : item))
+        prev.map((item) =>
+          item.id === newItem.id
+            ? { ...item, progress: 100, status: "Selesai" }
+            : item,
+        ),
       );
       triggerToast(`Berkas "${fileName}" berhasil diunggah!`);
     }, 900);
@@ -158,18 +197,46 @@ export default function DashboardGuruPage() {
   const handlePublish = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      triggerToast('Mohon masukkan judul materi.');
+      triggerToast("Mohon masukkan judul materi.");
       return;
     }
 
     setIsPublishing(true);
 
     try {
-      const ownerName = currentUser?.fullName || 'Guru Kelas 4';
-      const ownerId = currentUser?.id || 'user-guru-4';
+      const ownerName = currentUser?.fullName || "Guru Kelas 4";
+      const ownerId = currentUser?.id || "11111111-1111-1111-1111-111111111111";
 
       const now = new Date();
-      const dateFormatted = `${now.getDate()} ${now.toLocaleString('id-ID', { month: 'short' })} ${now.getFullYear()}`;
+      const dateFormatted = `${now.getDate()} ${now.toLocaleString("id-ID", { month: "short" })} ${now.getFullYear()}`;
+
+      let filePath: string | undefined;
+      let fileName: string | undefined;
+
+      if (kind !== "canvas" && selectedFile) {
+        const extension =
+          selectedFile.name.split(".").pop()?.toLowerCase() ||
+          (kind === "ppt" ? "pptx" : "pdf");
+        fileName = selectedFile.name;
+        filePath = `modules/${Date.now()}-${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
+
+        if (supabase) {
+          const { error: uploadError } = await supabase.storage
+            .from("materials")
+            .upload(filePath, selectedFile, {
+              upsert: true,
+              contentType: selectedFile.type,
+            });
+
+          if (uploadError) {
+            const missingBucket =
+              uploadError.message?.toLowerCase().includes("bucket") &&
+              uploadError.message?.toLowerCase().includes("not found");
+            if (!missingBucket) throw uploadError;
+            filePath = undefined;
+          }
+        }
+      }
 
       await MaterialService.create({
         ownerId,
@@ -178,14 +245,26 @@ export default function DashboardGuruPage() {
         subject,
         grade,
         kind,
-        description: description.trim() || `Materi tambahan ${subject} untuk kelas ${grade}. Dibuat oleh ${ownerName}.`,
-        pageCount: kind === 'canvas' ? 1 : pageCount,
-        canvasUrl: kind === 'canvas' ? (canvasUrl.trim() || 'https://canva.com/design/SDN5Demo/view') : undefined,
-        fileName: kind === 'canvas' ? undefined : `${title.replace(/\s+/g, '_')}.${kind === 'ppt' ? 'pptx' : 'pdf'}`,
-        fileSize: '3.2 MB',
+        description:
+          description.trim() ||
+          `Materi tambahan ${subject} untuk kelas ${grade}. Dibuat oleh ${ownerName}.`,
+        pageCount: kind === "canvas" ? 1 : pageCount,
+        canvasUrl:
+          kind === "canvas"
+            ? canvasUrl.trim() || "https://canva.com/design/SDN5Demo/view"
+            : undefined,
+        fileName:
+          kind === "canvas"
+            ? undefined
+            : fileName ||
+              `${title.replace(/\s+/g, "_")}.${kind === "ppt" ? "pptx" : "pdf"}`,
+        fileSize: selectedFile
+          ? `${(selectedFile.size / 1024 / 1024).toFixed(1)} MB`
+          : "3.2 MB",
         allowDownload,
-        status: 'terbit',
+        status: "terbit",
         publishedAt: dateFormatted,
+        filePath,
         previewContent: {
           pages: [
             {
@@ -193,31 +272,35 @@ export default function DashboardGuruPage() {
               title: title.trim(),
               subtitle: `${subject} Kelas ${grade} — SDN 5 Way Galih`,
               content: [
-                description || 'Materi pembelajaran pendukung untuk memperdalam pemahaman siswa.',
-                'Disusun khusus agar mudah dipelajari kapan saja oleh siswa.',
-                'Silakan pelajari rangkuman konsep dan kerjakan latihan soal di bawah ini.'
+                description ||
+                  "Materi pembelajaran pendukung untuk memperdalam pemahaman siswa.",
+                "Disusun khusus agar mudah dipelajari kapan saja oleh siswa.",
+                "Silakan pelajari rangkuman konsep dan kerjakan latihan soal di bawah ini.",
               ],
               points: [
-                'Konsep Inti Pembahasan',
-                'Contoh Penerapan Praktis',
-                'Uji Pemahaman Singkat'
+                "Konsep Inti Pembahasan",
+                "Contoh Penerapan Praktis",
+                "Uji Pemahaman Singkat",
               ],
-              exercise: 'Latihan mandiri: Catat poin-poin penting di atas pada buku catatanmu!'
-            }
-          ]
-        }
+              exercise:
+                "Latihan mandiri: Catat poin-poin penting di atas pada buku catatanmu!",
+            },
+          ],
+        },
       });
 
-      triggerToast(`🎉 Berhasil menerbitkan materi "${title}"! Tersedia langsung di Katalog.`);
-      
+      triggerToast(
+        `🎉 Berhasil menerbitkan materi "${title}"! Tersedia langsung di Katalog.`,
+      );
+
       // Reset form
-      setTitle('');
-      setDescription('');
-      setCanvasUrl('');
+      setTitle("");
+      setDescription("");
+      setCanvasUrl("");
       loadData();
     } catch (err) {
       console.error(err);
-      triggerToast('Gagal menerbitkan materi.');
+      triggerToast("Gagal menerbitkan materi.");
     } finally {
       setIsPublishing(false);
     }
@@ -225,9 +308,12 @@ export default function DashboardGuruPage() {
 
   // Quick toggle status: Terbit <-> Draf
   const handleToggleStatus = async (material: Material) => {
-    const newStatus: MaterialStatus = material.status === 'terbit' ? 'draf' : 'terbit';
+    const newStatus: MaterialStatus =
+      material.status === "terbit" ? "draf" : "terbit";
     await MaterialService.update(material.id, { status: newStatus });
-    triggerToast(`Status materi "${material.title}" diubah menjadi ${newStatus.toUpperCase()}`);
+    triggerToast(
+      `Status materi "${material.title}" diubah menjadi ${newStatus.toUpperCase()}`,
+    );
     loadData();
   };
 
@@ -235,7 +321,7 @@ export default function DashboardGuruPage() {
   const handleToggleDownload = async (material: Material) => {
     const updated = !material.allowDownload;
     await MaterialService.update(material.id, { allowDownload: updated });
-    triggerToast(`Izin unduh siswa: ${updated ? 'DIIZINKAN' : 'DILARANG'}`);
+    triggerToast(`Izin unduh siswa: ${updated ? "DIIZINKAN" : "DILARANG"}`);
     loadData();
   };
 
@@ -259,7 +345,7 @@ export default function DashboardGuruPage() {
       allowDownload: editingMaterial.allowDownload,
     });
     setEditingMaterial(null);
-    triggerToast('Perubahan materi berhasil disimpan.');
+    triggerToast("Perubahan materi berhasil disimpan.");
     loadData();
   };
 
@@ -268,7 +354,6 @@ export default function DashboardGuruPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
-      
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-blue-600 text-white shadow-2xl flex items-center gap-3 border border-white/20 animate-fade-in text-sm">
@@ -284,7 +369,8 @@ export default function DashboardGuruPage() {
             Unggah Materi
           </h1>
           <p className="text-sm text-slate-300 mt-1">
-            Materi yang Anda terbitkan langsung tersedia untuk siswa sesuai kelas yang ditentukan.
+            Materi yang Anda terbitkan langsung tersedia untuk siswa sesuai
+            kelas yang ditentukan.
           </p>
         </div>
 
@@ -301,15 +387,15 @@ export default function DashboardGuruPage() {
 
       {/* Main Grid: Upload Area & Upload Progress (Left) vs Form (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
         {/* Left Column (Upload Progress & DropZone) */}
         <div className="lg:col-span-6 space-y-6">
-          
           {/* Tabel Progres Unggah */}
           <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-xl">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center justify-between">
               <span>Progres Unggahan</span>
-              <span className="text-[11px] text-blue-400 font-normal">Otomatis sinkron</span>
+              <span className="text-[11px] text-blue-400 font-normal">
+                Otomatis sinkron
+              </span>
             </h3>
 
             <div className="overflow-x-auto">
@@ -324,7 +410,10 @@ export default function DashboardGuruPage() {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {uploadItems.map((item) => (
-                    <tr key={item.id} className="hover:bg-white/5 transition-colors">
+                    <tr
+                      key={item.id}
+                      className="hover:bg-white/5 transition-colors"
+                    >
                       <td className="py-3 font-medium text-slate-200 truncate max-w-[140px]">
                         {item.name}
                       </td>
@@ -332,17 +421,17 @@ export default function DashboardGuruPage() {
                         {item.pages}
                       </td>
                       <td className="py-3 text-center">
-                        {item.status === 'Selesai' && (
+                        {item.status === "Selesai" && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/50">
                             Selesai
                           </span>
                         )}
-                        {item.status === 'Mengunggah' && (
+                        {item.status === "Mengunggah" && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950 text-amber-400 border border-amber-800/50 animate-pulse">
                             Mengunggah
                           </span>
                         )}
-                        {item.status === 'Gagal' && (
+                        {item.status === "Gagal" && (
                           <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-950 text-rose-400 border border-rose-800/50">
                             Gagal
                           </span>
@@ -353,11 +442,11 @@ export default function DashboardGuruPage() {
                           <div className="w-16 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                             <div
                               className={`h-full transition-all duration-300 ${
-                                item.status === 'Selesai'
-                                  ? 'bg-emerald-500'
-                                  : item.status === 'Gagal'
-                                  ? 'bg-rose-500'
-                                  : 'bg-blue-500'
+                                item.status === "Selesai"
+                                  ? "bg-emerald-500"
+                                  : item.status === "Gagal"
+                                    ? "bg-rose-500"
+                                    : "bg-blue-500"
                               }`}
                               style={{ width: `${item.progress}%` }}
                             />
@@ -396,9 +485,10 @@ export default function DashboardGuruPage() {
             <h4 className="text-xl font-bold font-heading text-white mb-2">
               Seret berkas ke sini
             </h4>
-            
+
             <p className="text-xs text-slate-300 max-w-sm mb-5 leading-relaxed">
-              Format yang diterima: PDF, presentasi PPT, atau dokumen modul ajar. Anda dapat memilih berkas dari komputer atau HP.
+              Format yang diterima: PDF, presentasi PPT, atau dokumen modul
+              ajar. Anda dapat memilih berkas dari komputer atau HP.
             </p>
 
             <button
@@ -408,7 +498,6 @@ export default function DashboardGuruPage() {
               Pilih berkas
             </button>
           </div>
-
         </div>
 
         {/* Right Column (Form Detail Materi) */}
@@ -420,7 +509,6 @@ export default function DashboardGuruPage() {
             </h3>
 
             <form onSubmit={handlePublish} className="space-y-5">
-              
               {/* Judul Materi */}
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-2">
@@ -464,7 +552,9 @@ export default function DashboardGuruPage() {
                     <option value="Matematika">Matematika</option>
                     <option value="IPAS">IPAS</option>
                     <option value="Bahasa Indonesia">Bahasa Indonesia</option>
-                    <option value="Pendidikan Pancasila">Pendidikan Pancasila</option>
+                    <option value="Pendidikan Pancasila">
+                      Pendidikan Pancasila
+                    </option>
                     <option value="Seni Budaya">Seni Budaya</option>
                     <option value="PJOK">PJOK</option>
                     <option value="Bahasa Inggris">Bahasa Inggris</option>
@@ -498,11 +588,11 @@ export default function DashboardGuruPage() {
                 <div className="grid grid-cols-3 p-1 rounded-xl bg-slate-950/80 border border-white/5">
                   <button
                     type="button"
-                    onClick={() => setKind('pdf')}
+                    onClick={() => setKind("pdf")}
                     className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      kind === 'pdf'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      kind === "pdf"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     <FileText className="w-3.5 h-3.5" />
@@ -511,11 +601,11 @@ export default function DashboardGuruPage() {
 
                   <button
                     type="button"
-                    onClick={() => setKind('ppt')}
+                    onClick={() => setKind("ppt")}
                     className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      kind === 'ppt'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      kind === "ppt"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     <Presentation className="w-3.5 h-3.5" />
@@ -524,11 +614,11 @@ export default function DashboardGuruPage() {
 
                   <button
                     type="button"
-                    onClick={() => setKind('canvas')}
+                    onClick={() => setKind("canvas")}
                     className={`py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                      kind === 'canvas'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
+                      kind === "canvas"
+                        ? "bg-blue-600 text-white shadow-md"
+                        : "text-slate-400 hover:text-white"
                     }`}
                   >
                     <Layout className="w-3.5 h-3.5" />
@@ -538,7 +628,7 @@ export default function DashboardGuruPage() {
               </div>
 
               {/* Tautan Canva jika Canvas dipilih */}
-              {kind === 'canvas' && (
+              {kind === "canvas" && (
                 <div className="animate-fade-in">
                   <label className="block text-xs font-medium text-amber-300 mb-2">
                     Tautan Canva (Link Desain / Presentasi Canva)
@@ -561,8 +651,8 @@ export default function DashboardGuruPage() {
                   </p>
                   <p className="text-xs text-slate-400">
                     {allowDownload
-                      ? 'Siswa dapat membaca dan mengunduh berkas'
-                      : 'Siswa hanya dapat membaca langsung (unduhan terkunci)'}
+                      ? "Siswa dapat membaca dan mengunduh berkas"
+                      : "Siswa hanya dapat membaca langsung (unduhan terkunci)"}
                   </p>
                 </div>
 
@@ -595,7 +685,6 @@ export default function DashboardGuruPage() {
             </form>
           </div>
         </div>
-
       </div>
 
       {/* =========================================================================
@@ -613,7 +702,8 @@ export default function DashboardGuruPage() {
           </div>
 
           <div className="text-xs text-slate-400 bg-slate-900 px-3 py-1.5 rounded-lg border border-white/5">
-            Total koleksi: <strong className="text-white">{materials.length} materi</strong>
+            Total koleksi:{" "}
+            <strong className="text-white">{materials.length} materi</strong>
           </div>
         </div>
 
@@ -632,15 +722,21 @@ export default function DashboardGuruPage() {
             </thead>
             <tbody className="divide-y divide-white/5">
               {materials.map((mat) => (
-                <tr key={mat.id} className="hover:bg-white/5 transition-colors group">
-                  
+                <tr
+                  key={mat.id}
+                  className="hover:bg-white/5 transition-colors group"
+                >
                   {/* Judul */}
                   <td className="py-4 pl-2 font-medium text-white">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-blue-950/60 border border-blue-500/20 text-blue-400 shrink-0">
-                        {mat.kind === 'pdf' && <FileText className="w-4 h-4" />}
-                        {mat.kind === 'ppt' && <Presentation className="w-4 h-4" />}
-                        {mat.kind === 'canvas' && <Layout className="w-4 h-4" />}
+                        {mat.kind === "pdf" && <FileText className="w-4 h-4" />}
+                        {mat.kind === "ppt" && (
+                          <Presentation className="w-4 h-4" />
+                        )}
+                        {mat.kind === "canvas" && (
+                          <Layout className="w-4 h-4" />
+                        )}
                       </div>
                       <div>
                         <p className="font-semibold text-slate-200 group-hover:text-blue-300 transition-colors">
@@ -657,11 +753,11 @@ export default function DashboardGuruPage() {
                   <td className="py-4 text-center">
                     <span
                       className={`inline-block px-2.5 py-1 rounded-md text-xs font-semibold ${
-                        mat.kind === 'pdf'
-                          ? 'text-rose-400 bg-rose-950/50 border border-rose-800/40'
-                          : mat.kind === 'ppt'
-                          ? 'text-orange-400 bg-orange-950/50 border border-orange-800/40'
-                          : 'text-amber-400 bg-amber-950/50 border border-amber-800/40'
+                        mat.kind === "pdf"
+                          ? "text-rose-400 bg-rose-950/50 border border-rose-800/40"
+                          : mat.kind === "ppt"
+                            ? "text-orange-400 bg-orange-950/50 border border-orange-800/40"
+                            : "text-amber-400 bg-amber-950/50 border border-amber-800/40"
                       }`}
                     >
                       {mat.kind.toUpperCase()}
@@ -675,7 +771,7 @@ export default function DashboardGuruPage() {
 
                   {/* Tanggal Diunggah */}
                   <td className="py-4 text-xs text-slate-400 font-mono">
-                    {mat.publishedAt || 'Belum'}
+                    {mat.publishedAt || "Belum"}
                   </td>
 
                   {/* Izin Unduh */}
@@ -684,8 +780,8 @@ export default function DashboardGuruPage() {
                       onClick={() => handleToggleDownload(mat)}
                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
                         mat.allowDownload
-                          ? 'bg-blue-950/70 text-blue-300 border border-blue-800/50 hover:bg-blue-900/60'
-                          : 'bg-amber-950/70 text-amber-300 border border-amber-800/50 hover:bg-amber-900/60'
+                          ? "bg-blue-950/70 text-blue-300 border border-blue-800/50 hover:bg-blue-900/60"
+                          : "bg-amber-950/70 text-amber-300 border border-amber-800/50 hover:bg-amber-900/60"
                       }`}
                       title="Klik untuk ubah izin unduh"
                     >
@@ -708,13 +804,13 @@ export default function DashboardGuruPage() {
                     <button
                       onClick={() => handleToggleStatus(mat)}
                       className={`inline-block px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                        mat.status === 'terbit'
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60 hover:bg-emerald-900'
-                          : 'bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700'
+                        mat.status === "terbit"
+                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800/60 hover:bg-emerald-900"
+                          : "bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700"
                       }`}
                       title="Klik untuk ubah status (Terbit / Draf)"
                     >
-                      {mat.status === 'terbit' ? 'Terbit' : 'Draf'}
+                      {mat.status === "terbit" ? "Terbit" : "Draf"}
                     </button>
                   </td>
 
@@ -746,7 +842,6 @@ export default function DashboardGuruPage() {
                       </button>
                     </div>
                   </td>
-
                 </tr>
               ))}
             </tbody>
@@ -772,12 +867,17 @@ export default function DashboardGuruPage() {
 
             <div className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">Judul</label>
+                <label className="block text-slate-300 mb-1 font-medium">
+                  Judul
+                </label>
                 <input
                   type="text"
                   value={editingMaterial.title}
                   onChange={(e) =>
-                    setEditingMaterial({ ...editingMaterial, title: e.target.value })
+                    setEditingMaterial({
+                      ...editingMaterial,
+                      title: e.target.value,
+                    })
                   }
                   className="w-full glass-input px-3.5 py-2.5 rounded-xl text-sm"
                 />
@@ -785,35 +885,49 @@ export default function DashboardGuruPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Mata Pelajaran</label>
+                  <label className="block text-slate-300 mb-1 font-medium">
+                    Mata Pelajaran
+                  </label>
                   <input
                     type="text"
                     value={editingMaterial.subject}
                     onChange={(e) =>
-                      setEditingMaterial({ ...editingMaterial, subject: e.target.value })
+                      setEditingMaterial({
+                        ...editingMaterial,
+                        subject: e.target.value,
+                      })
                     }
                     className="w-full glass-input px-3.5 py-2.5 rounded-xl text-sm"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 mb-1 font-medium">Kelas</label>
+                  <label className="block text-slate-300 mb-1 font-medium">
+                    Kelas
+                  </label>
                   <select
                     value={editingMaterial.grade}
                     onChange={(e) =>
-                      setEditingMaterial({ ...editingMaterial, grade: Number(e.target.value) })
+                      setEditingMaterial({
+                        ...editingMaterial,
+                        grade: Number(e.target.value),
+                      })
                     }
                     className="w-full glass-input px-3 py-2.5 rounded-xl text-sm bg-slate-900"
                   >
                     {[1, 2, 3, 4, 5, 6].map((g) => (
-                      <option key={g} value={g}>Kelas {g}</option>
+                      <option key={g} value={g}>
+                        Kelas {g}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1 font-medium">Status Publikasi</label>
+                <label className="block text-slate-300 mb-1 font-medium">
+                  Status Publikasi
+                </label>
                 <select
                   value={editingMaterial.status}
                   onChange={(e) =>
@@ -841,11 +955,11 @@ export default function DashboardGuruPage() {
                   }
                   className={`px-3 py-1 rounded-lg text-xs font-semibold ${
                     editingMaterial.allowDownload
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800 text-slate-400'
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-800 text-slate-400"
                   }`}
                 >
-                  {editingMaterial.allowDownload ? 'Diizinkan' : 'Dilarang'}
+                  {editingMaterial.allowDownload ? "Diizinkan" : "Dilarang"}
                 </button>
               </div>
             </div>
@@ -869,7 +983,6 @@ export default function DashboardGuruPage() {
           </div>
         </div>
       )}
-
     </div>
   );
 }

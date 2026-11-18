@@ -1,14 +1,19 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import confetti from 'canvas-confetti';
-import { MaterialService, AccessLogService, RatingService, AuthService } from '@/lib/storage';
-import { INITIAL_MATERIALS, INITIAL_ACCESS_LOGS } from '@/lib/mock-data';
-import { Material, UserProfile, AccessLogItem } from '@/lib/types';
-import DocumentPreview from '@/components/DocumentPreview';
-import ContactModal from '@/components/ContactModal';
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import confetti from "canvas-confetti";
+import {
+  MaterialService,
+  AccessLogService,
+  RatingService,
+  AuthService,
+} from "@/lib/storage";
+import { INITIAL_MATERIALS, INITIAL_ACCESS_LOGS } from "@/lib/mock-data";
+import { Material, UserProfile, AccessLogItem } from "@/lib/types";
+import DocumentPreview from "@/components/DocumentPreview";
+import ContactModal from "@/components/ContactModal";
 import {
   ArrowLeft,
   FileText,
@@ -21,21 +26,25 @@ import {
   Maximize2,
   UserCheck,
   Clock,
-  Sparkles
-} from 'lucide-react';
+  Sparkles,
+} from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 interface AksesMateriClientProps {
   materialId: string;
 }
 
-export default function AksesMateriClient({ materialId }: AksesMateriClientProps) {
+export default function AksesMateriClient({
+  materialId,
+}: AksesMateriClientProps) {
   const router = useRouter();
 
-  const [material, setMaterial] = useState<Material | null>(() =>
-    INITIAL_MATERIALS.find((m) => m.id === materialId) || null
+  const [material, setMaterial] = useState<Material | null>(
+    () => INITIAL_MATERIALS.find((m) => m.id === materialId) || null,
   );
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [accessLogs, setAccessLogs] = useState<AccessLogItem[]>(INITIAL_ACCESS_LOGS);
+  const [accessLogs, setAccessLogs] =
+    useState<AccessLogItem[]>(INITIAL_ACCESS_LOGS);
   const [rating, setRating] = useState<number>(0);
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [ratingSuccess, setRatingSuccess] = useState(false);
@@ -44,8 +53,9 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
   const [isDownloading, setIsDownloading] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = async () => {
+  const loadData = async (recordRead = true) => {
     if (!materialId) return;
 
     const user = AuthService.getCurrentUser();
@@ -55,11 +65,14 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
     if (mat) {
       setMaterial(mat);
 
-      if (user) {
-        // Record 'dibaca' action automatically if user is logged in
-        await AccessLogService.logAction(mat, user, 'dibaca');
-        
+      if (user && recordRead) {
+        // Record 'dibaca' once per load; refresh events should not write/read it again
+        await AccessLogService.logAction(mat, user, "dibaca");
+
         // Load user rating
+        const userRating = await RatingService.getRating(mat.id, user.id);
+        setRating(userRating);
+      } else if (user) {
         const userRating = await RatingService.getRating(mat.id, user.id);
         setRating(userRating);
       }
@@ -68,18 +81,19 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
     // Load recent access logs
     const allLogs = await AccessLogService.getAll();
     setAccessLogs(allLogs);
+    setIsLoading(false);
   };
 
   useEffect(() => {
     setMounted(true);
     loadData();
 
-    const handleUpdate = () => loadData();
-    window.addEventListener('arsip_storage_update', handleUpdate);
-    window.addEventListener('arsip_auth_change', handleUpdate);
+    const handleUpdate = () => loadData(false);
+    window.addEventListener("arsip_storage_update", handleUpdate);
+    window.addEventListener("arsip_auth_change", handleUpdate);
     return () => {
-      window.removeEventListener('arsip_storage_update', handleUpdate);
-      window.removeEventListener('arsip_auth_change', handleUpdate);
+      window.removeEventListener("arsip_storage_update", handleUpdate);
+      window.removeEventListener("arsip_auth_change", handleUpdate);
     };
   }, [materialId]);
 
@@ -89,20 +103,22 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
   };
 
   // Quick Login Helper if user is not logged in
-  const handleQuickLogin = (role: 'siswa' | 'guru') => {
-    if (role === 'siswa') {
-      AuthService.login('siswa001', 'siswa');
+  const handleQuickLogin = (role: "siswa" | "guru") => {
+    if (role === "siswa") {
+      AuthService.login("siswa001", "siswa");
     } else {
-      AuthService.login('guru4', 'guru');
+      AuthService.login("guru4", "guru");
     }
     loadData();
-    showToast(`Berhasil masuk sebagai ${role === 'siswa' ? 'Siswa (siswa001)' : 'Guru (guru4)'}!`);
+    showToast(
+      `Berhasil masuk sebagai ${role === "siswa" ? "Siswa (siswa001)" : "Guru (guru4)"}!`,
+    );
   };
 
   // Handle Star Rating Click
   const handleStarClick = async (starValue: number) => {
     if (!currentUser) {
-      showToast('Silakan masuk terlebih dahulu untuk memberikan penilaian.');
+      showToast("Silakan masuk terlebih dahulu untuk memberikan penilaian.");
       return;
     }
 
@@ -120,12 +136,12 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
     if (!material) return;
 
     if (!material.allowDownload) {
-      showToast('Unduhan dinonaktifkan oleh guru untuk materi ini.');
+      showToast("Unduhan dinonaktifkan oleh guru untuk materi ini.");
       return;
     }
 
     if (!currentUser) {
-      showToast('Silakan masuk terlebih dahulu untuk mengunduh.');
+      showToast("Silakan masuk terlebih dahulu untuk mengunduh.");
       return;
     }
 
@@ -137,54 +153,82 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
         particleCount: 80,
         spread: 60,
         origin: { y: 0.7 },
-        colors: ['#0F6BFF', '#10B981', '#F59E0B', '#3B82F6'],
+        colors: ["#0F6BFF", "#10B981", "#F59E0B", "#3B82F6"],
       });
 
       // Log 'diunduh' in access history
-      await AccessLogService.logAction(material, currentUser, 'diunduh');
+      await AccessLogService.logAction(material, currentUser, "diunduh");
       const updatedLogs = await AccessLogService.getAll();
       setAccessLogs(updatedLogs);
 
-      // Trigger simulated file download with clean blob
-      const fileBlob = new Blob(
+      // Download from Supabase Storage if filePath is available
+      if (material.filePath && supabase) {
+        const { data, error } = await supabase.storage
+          .from("materials")
+          .download(material.filePath);
+
+        if (error) throw error;
+
+        const downloadUrl = URL.createObjectURL(data);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = downloadUrl;
+        downloadLink.download =
+          material.fileName ||
+          `${material.title.replace(/\s+/g, "_")}.${material.kind === "ppt" ? "pptx" : "pdf"}`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(downloadUrl);
+        showToast(`Berkas "${material.title}" berhasil diunduh!`);
+        return;
+      }
+
+      // Fallback: Downloadable text summary if no file is available
+      const summaryBlob = new Blob(
         [
-          `ARSIP MATERI TAMBAHAN SDN 5 WAY GALIH\n\n` +
-          `Judul Materi  : ${material.title}\n` +
-          `Mata Pelajaran: ${material.subject}\n` +
-          `Kelas         : Kelas ${material.grade}\n` +
-          `Penyusun      : ${material.ownerName}\n` +
-          `Tanggal Terbit: ${material.publishedAt}\n\n` +
-          `Deskripsi:\n${material.description}\n\n` +
-          `===================================================\n` +
-          `Terima kasih telah belajar menggunakan Arsip SDN 5 Way Galih!`
+          `ARSIP MATERI TAMBAHAN SDN 5 WAY GALIH\n\nJudul Materi: ${material.title}\nMata Pelajaran: ${material.subject}\nKelas: ${material.grade}\nPenyusun: ${material.ownerName}\n\n${material.description}\n`,
         ],
-        { type: 'text/plain;charset=utf-8' }
+        { type: "text/plain;charset=utf-8" },
       );
-
-      const downloadUrl = URL.createObjectURL(fileBlob);
-      const downloadLink = document.createElement('a');
-      downloadLink.href = downloadUrl;
-      downloadLink.download = material.fileName || `${material.title.replace(/\s+/g, '_')}.${material.kind === 'ppt' ? 'pptx' : 'pdf'}`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      URL.revokeObjectURL(downloadUrl);
-
-      showToast(`Berkas "${material.title}" berhasil diunduh!`);
+      const fallbackUrl = URL.createObjectURL(summaryBlob);
+      const fallbackLink = document.createElement("a");
+      fallbackLink.href = fallbackUrl;
+      fallbackLink.download = `${material.title.replace(/\s+/g, "_")}_ringkasan.txt`;
+      document.body.appendChild(fallbackLink);
+      fallbackLink.click();
+      document.body.removeChild(fallbackLink);
+      URL.revokeObjectURL(fallbackUrl);
+      showToast(`Ringkasan materi "${material.title}" berhasil diunduh!`);
     } catch (e) {
       console.error(e);
-      showToast('Terjadi kesalahan saat mengunduh berkas.');
+      showToast("Terjadi kesalahan saat mengunduh berkas.");
     } finally {
       setIsDownloading(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-20 text-center">
+        <div className="w-8 h-8 mx-auto mb-4 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+        <p className="text-sm text-slate-400">Memuat materi pembelajaran...</p>
+      </div>
+    );
+  }
+
   if (!material) {
     return (
       <div className="max-w-4xl mx-auto px-4 py-20 text-center space-y-4">
-        <h2 className="text-2xl font-bold font-heading text-white">Materi Tidak Ditemukan</h2>
-        <p className="text-sm text-slate-400">Materi yang Anda cari mungkin telah dihapus atau tidak tersedia.</p>
-        <Link href="/#katalog" className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm">
+        <h2 className="text-2xl font-bold font-heading text-white">
+          Materi Tidak Ditemukan
+        </h2>
+        <p className="text-sm text-slate-400">
+          Materi yang Anda cari mungkin telah dihapus atau tidak tersedia.
+        </p>
+        <Link
+          href="/#katalog"
+          className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
+        >
           <ArrowLeft className="w-4 h-4" />
           <span>Kembali ke Katalog</span>
         </Link>
@@ -194,7 +238,6 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12">
-      
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-blue-600 text-white shadow-2xl flex items-center gap-3 border border-white/20 animate-fade-in text-sm">
@@ -215,7 +258,10 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
 
         {currentUser && (
           <div className="text-xs text-slate-400">
-            Akses aktif: <strong className="text-blue-300">{currentUser.fullName} ({currentUser.role})</strong>
+            Akses aktif:{" "}
+            <strong className="text-blue-300">
+              {currentUser.fullName} ({currentUser.role})
+            </strong>
           </div>
         )}
       </div>
@@ -225,9 +271,7 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold font-heading text-white tracking-tight">
           {material.title}
         </h1>
-        <p className="text-sm text-slate-300 mt-2">
-          {material.description}
-        </p>
+        <p className="text-sm text-slate-300 mt-2">{material.description}</p>
       </div>
 
       {/* =========================================================================
@@ -240,16 +284,19 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold font-heading">Akses Materi Memerlukan Masuk</h3>
+              <h3 className="text-lg font-bold font-heading">
+                Akses Materi Memerlukan Masuk
+              </h3>
               <p className="text-xs text-blue-200">
-                Sesuai aturan sekolah, hanya siswa dan guru terdaftar yang dapat membaca isi arsip lengkap atau mengunduh.
+                Sesuai aturan sekolah, hanya siswa dan guru terdaftar yang dapat
+                membaca isi arsip lengkap atau mengunduh.
               </p>
             </div>
           </div>
 
           <div className="pt-2 flex flex-wrap items-center gap-3 text-xs">
             <button
-              onClick={() => handleQuickLogin('siswa')}
+              onClick={() => handleQuickLogin("siswa")}
               className="btn-primary px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
             >
               <UserCheck className="w-4 h-4" />
@@ -257,7 +304,7 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
             </button>
 
             <button
-              onClick={() => handleQuickLogin('guru')}
+              onClick={() => handleQuickLogin("guru")}
               className="btn-glass px-4 py-2.5 rounded-xl font-medium text-slate-200 flex items-center gap-2"
             >
               <span>Masuk sebagai Guru (guru4)</span>
@@ -277,7 +324,6 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
           MAIN GRID: DOCUMENT PREVIEW (LEFT) VS MATERIAL DETAILS & ACTIONS (RIGHT)
           ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
         {/* Left Column (Interactive Document Previewer) */}
         <div className="lg:col-span-7">
           <DocumentPreview
@@ -289,7 +335,6 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
 
         {/* Right Column (Detail Materi, Rating, Download Button) */}
         <div className="lg:col-span-5 space-y-6">
-          
           {/* Card: Detail Modul */}
           <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-xl space-y-4">
             <h3 className="text-lg font-bold font-heading text-white border-b border-white/10 pb-3">
@@ -299,23 +344,27 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Mata pelajaran</span>
-                <span className="font-semibold text-white">{material.subject}</span>
+                <span className="font-semibold text-white">
+                  {material.subject}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Kelas</span>
-                <span className="font-semibold text-blue-400">Kelas {material.grade}</span>
+                <span className="font-semibold text-blue-400">
+                  Kelas {material.grade}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Jenis</span>
                 <span
                   className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                    material.kind === 'pdf'
-                      ? 'text-rose-400 bg-rose-950/60 border border-rose-800/40'
-                      : material.kind === 'ppt'
-                      ? 'text-orange-400 bg-orange-950/60 border border-orange-800/40'
-                      : 'text-amber-400 bg-amber-950/60 border border-amber-800/40'
+                    material.kind === "pdf"
+                      ? "text-rose-400 bg-rose-950/60 border border-rose-800/40"
+                      : material.kind === "ppt"
+                        ? "text-orange-400 bg-orange-950/60 border border-orange-800/40"
+                        : "text-amber-400 bg-amber-950/60 border border-amber-800/40"
                   }`}
                 >
                   {material.kind.toUpperCase()}
@@ -324,12 +373,16 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Diunggah oleh</span>
-                <span className="font-medium text-slate-200">{material.ownerName}</span>
+                <span className="font-medium text-slate-200">
+                  {material.ownerName}
+                </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-400">Tanggal</span>
-                <span className="font-mono text-slate-300">{material.publishedAt}</span>
+                <span className="font-mono text-slate-300">
+                  {material.publishedAt}
+                </span>
               </div>
 
               {material.fileName && (
@@ -346,9 +399,11 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
           {/* Card: Nilai Modul Ini (Star Rating) */}
           <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-xl space-y-3">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold text-white">Nilai materi ini</h4>
+              <h4 className="text-sm font-semibold text-white">
+                Nilai materi ini
+              </h4>
               <span className="text-xs text-amber-400 font-semibold">
-                {rating > 0 ? `${rating} dari 5 bintang` : 'Belum dinilai'}
+                {rating > 0 ? `${rating} dari 5 bintang` : "Belum dinilai"}
               </span>
             </div>
 
@@ -368,8 +423,8 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
                     <Star
                       className={`w-6 h-6 transition-colors ${
                         isFilled
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'fill-transparent text-slate-600'
+                          ? "fill-amber-400 text-amber-400"
+                          : "fill-transparent text-slate-600"
                       }`}
                     />
                   </button>
@@ -395,7 +450,10 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
             ) : (
               <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-200">
                 <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-                <span>Guru membatasi modul ini hanya untuk dibaca langsung (unduh dinonaktifkan).</span>
+                <span>
+                  Guru membatasi modul ini hanya untuk dibaca langsung (unduh
+                  dinonaktifkan).
+                </span>
               </div>
             )}
 
@@ -436,22 +494,23 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
               <span>Buka layar penuh</span>
             </button>
           </div>
-
         </div>
-
       </div>
 
       {/* =========================================================================
           BOTTOM ROW: RIWAYAT AKSES (LEFT) VS BUTUH BANTUAN? (RIGHT)
           ========================================================================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start pt-6 border-t border-white/5">
-        
         {/* Riwayat Akses Table (Left - 8 columns) */}
         <div className="lg:col-span-8 glass-panel p-6 sm:p-7 rounded-3xl border border-white/10 shadow-xl space-y-4">
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <div>
-              <h3 className="text-xl font-bold font-heading text-white">Riwayat Akses</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Catatan interaksi materi yang telah Anda buka atau unduh.</p>
+              <h3 className="text-xl font-bold font-heading text-white">
+                Riwayat Akses
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Catatan interaksi materi yang telah Anda buka atau unduh.
+              </p>
             </div>
             <Clock className="w-4 h-4 text-blue-400" />
           </div>
@@ -469,10 +528,17 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
               </thead>
               <tbody className="divide-y divide-white/5">
                 {accessLogs.slice(0, 5).map((log) => (
-                  <tr key={log.id} className="hover:bg-white/5 transition-colors">
+                  <tr
+                    key={log.id}
+                    className="hover:bg-white/5 transition-colors"
+                  >
                     <td className="py-3 font-medium text-slate-200">
-                      <p className="truncate max-w-[200px] text-white font-semibold">{log.moduleTitle}</p>
-                      <p className="text-[11px] text-slate-400">{log.teacherName}</p>
+                      <p className="truncate max-w-[200px] text-white font-semibold">
+                        {log.moduleTitle}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {log.teacherName}
+                      </p>
                     </td>
                     <td className="py-3 text-center">
                       <span className="font-semibold text-slate-300 uppercase text-[10px]">
@@ -486,17 +552,17 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
                       {log.timestamp}
                     </td>
                     <td className="py-3 text-center">
-                      {log.action === 'diunduh' && (
+                      {log.action === "diunduh" && (
                         <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800/60">
                           Diunduh
                         </span>
                       )}
-                      {log.action === 'dibaca' && (
+                      {log.action === "dibaca" && (
                         <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-950 text-blue-400 border border-blue-800/60">
                           Dibaca
                         </span>
                       )}
-                      {log.action === 'baru' && (
+                      {log.action === "baru" && (
                         <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950 text-amber-400 border border-amber-800/60">
                           Baru
                         </span>
@@ -519,7 +585,8 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
               Butuh Bantuan?
             </h3>
             <p className="text-xs text-blue-200 leading-relaxed">
-              Modul tidak bisa dibuka atau berkas tidak muncul? Hubungi kami untuk bantuan langsung dari admin sekolah.
+              Modul tidak bisa dibuka atau berkas tidak muncul? Hubungi kami
+              untuk bantuan langsung dari admin sekolah.
             </p>
           </div>
 
@@ -530,10 +597,12 @@ export default function AksesMateriClient({ materialId }: AksesMateriClientProps
             Contact Person
           </button>
         </div>
-
       </div>
 
-      <ContactModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />
+      <ContactModal
+        isOpen={contactOpen}
+        onClose={() => setContactOpen(false)}
+      />
     </div>
   );
 }
